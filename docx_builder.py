@@ -4,7 +4,11 @@
 
 import io
 import os
+import sys
 from typing import List, Optional, Dict
+
+# Streamlit Cloud: добавляем папку скрипта в путь поиска модулей
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from docx import Document
 from docx.shared import Pt, Mm, Cm, RGBColor
@@ -13,7 +17,7 @@ from docx.enum.section import WD_ORIENT
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 
-from styles.gost_styles import (
+from gost_styles import (
     PAGE, BODY, HEADING1, HEADING2, HEADING3,
     FIGURE_CAPTION, TABLE_CAPTION, TABLE_CELL, FOOTER, LIST_ITEM
 )
