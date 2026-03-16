@@ -134,4 +134,65 @@ LIST_ITEM = {
     "first_line_indent": Cm(-0.5),
     "space_before": Pt(0),
     "space_after":  Pt(0),
+}    "font_size":    Pt(14),
+    "bold":         False,
+    "alignment":    WD_ALIGN_PARAGRAPH.CENTER,
+    "space_before": Pt(6),
+    "space_after":  Pt(6),
+    "first_line_indent": Cm(0),
+}
+
+# ─────────────────────────────────────────────
+#  ПОДПИСИ К ТАБЛИЦАМ (ГОСТ 7.32-2017, п. 6.13)
+# ─────────────────────────────────────────────
+TABLE_CAPTION = {
+    "font_name":    "Times New Roman",
+    "font_size":    Pt(14),
+    "bold":         False,
+    "alignment":    WD_ALIGN_PARAGRAPH.LEFT,
+    "space_before": Pt(6),
+    "space_after":  Pt(3),
+    "first_line_indent": Cm(0),
+}
+
+TABLE_CELL = {
+    "font_name": "Times New Roman",
+    "font_size": Pt(12),
+}
+
+# ─────────────────────────────────────────────
+#  КОЛОНТИТУЛЫ (ГОСТ 7.32-2017, п. 6.4)
+#  Нижний: номер страницы по центру, 12 пт
+# ─────────────────────────────────────────────
+FOOTER = {
+    "font_name": "Times New Roman",
+    "font_size": Pt(12),
+    "alignment": WD_ALIGN_PARAGRAPH.CENTER,
+}
+
+# ─────────────────────────────────────────────
+#  РЕФЕРАТ / СОДЕРЖАНИЕ / СПИСОК ИСТОЧНИКОВ
+# ─────────────────────────────────────────────
+SECTION_TITLES = {
+    "РЕФЕРАТ":              True,
+    "СОДЕРЖАНИЕ":           True,
+    "ОПРЕДЕЛЕНИЯ":          True,
+    "ОБОЗНАЧЕНИЯ И СОКРАЩЕНИЯ": True,
+    "ВВЕДЕНИЕ":             True,
+    "ЗАКЛЮЧЕНИЕ":           True,
+    "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ": True,
+    "ПРИЛОЖЕНИЕ":           True,
+}
+
+# ─────────────────────────────────────────────
+#  СПИСОК (маркированный и нумерованный)
+# ─────────────────────────────────────────────
+LIST_ITEM = {
+    "font_name":  "Times New Roman",
+    "font_size":  Pt(14),
+    "alignment":  WD_ALIGN_PARAGRAPH.JUSTIFY,
+    "left_indent": Cm(1.25),
+    "first_line_indent": Cm(-0.5),
+    "space_before": Pt(0),
+    "space_after":  Pt(0),
 }
