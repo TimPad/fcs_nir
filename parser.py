@@ -83,7 +83,18 @@ class GostTextParser:
         "ЗАКЛЮЧЕНИЕ", "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ",
     }
 
+    @staticmethod
+    def _normalize(s: str) -> str:
+        """Схлопывает множественные пробелы, убирает пробелы по краям,
+        заменяет неразрывный пробел и табуляцию на обычный пробел."""
+        s = s.replace('\u00a0', ' ').replace('\t', ' ')
+        s = re.sub(r' {2,}', ' ', s)
+        return s.strip()
+
     def parse(self, text: str) -> List:
+        # Нормализация входного текста:
+        # 1. Убираем лишние пустые строки (более двух подряд → одна пустая)
+        text = re.sub(r'\n{3,}', '\n\n', text)
         lines = text.splitlines()
         elements = []
         i = 0
@@ -91,7 +102,7 @@ class GostTextParser:
         in_table = False
 
         while i < len(lines):
-            line = lines[i].rstrip()
+            line = self._normalize(lines[i])
 
             # --- Пустая строка ---
             if not line.strip():
@@ -223,7 +234,7 @@ class GostTextParser:
                 para_lines.append(next_line)
                 i += 1
 
-            full_text = " ".join(para_lines).strip()
+            full_text = self._normalize(" ".join(para_lines))
             if full_text:
                 elements.append(Paragraph(text=full_text))
 
