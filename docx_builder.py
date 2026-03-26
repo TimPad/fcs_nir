@@ -340,15 +340,25 @@ class GostDocxBuilder:
         num = getattr(el, "_number", "?")
         caption_text = f"Рисунок {num}" + (f" — {el.caption}" if el.caption else "")
 
-        # Изображение
-        img_data = images.get(el.path) or images.get(os.path.basename(el.path))
+        # Изображение: проверяем image_data в элементе или ищем в словаре images
+        img_data = None
+        if hasattr(el, 'image_data') and el.image_data:
+            img_data = el.image_data
+        elif el.path:
+            img_data = images.get(el.path) or images.get(os.path.basename(el.path))
+        
         if img_data:
             p_img = doc.add_paragraph()
             p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
             p_img.paragraph_format.first_line_indent = Cm(0)
             run = p_img.add_run()
             img_stream = io.BytesIO(img_data)
-            run.add_picture(img_stream, width=Cm(14))
+            try:
+                run.add_picture(img_stream, width=Cm(14))
+            except Exception:
+                # Если изображение не загрузилось, показываем заглушку
+                r = p_img.add_run(f"[ Рисунок: {el.path} ]")
+                self._set_run_font(r, 12, italic=True)
         else:
             # Заглушка — рамка с текстом
             p_ph = doc.add_paragraph()
