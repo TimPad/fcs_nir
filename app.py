@@ -1,5 +1,8 @@
 """
 Streamlit-приложение: форматирование текста по ГОСТ 7.32-2017 (отчёт о НИР).
+Поддерживает два режима:
+1. Ввод текста с Markdown-разметкой
+2. Загрузка неформатированного DOCX файла
 """
 
 import streamlit as st
@@ -8,6 +11,7 @@ import os, sys
 sys.path.insert(0, os.path.dirname(__file__))
 
 from parser import GostTextParser
+from docx_parser import GostDocxParser
 from docx_builder import GostDocxBuilder
 
 # ─────────────────────────────────────────────
@@ -167,124 +171,250 @@ with st.sidebar:
 # ─────────────────────────────────────────────
 #  ОСНОВНАЯ ОБЛАСТЬ
 # ─────────────────────────────────────────────
-col_input, col_preview = st.columns([3, 2], gap="large")
+st.subheader("📥 Выберите режим работы")
 
-with col_input:
-    st.subheader("📝 Входной текст")
+mode = st.radio(
+    "Источник данных:",
+    ["Текст с разметкой", "Загрузить DOCX файл"],
+    horizontal=True,
+    key="input_mode"
+)
 
-    with st.expander("📖 Синтаксис разметки", expanded=False):
-        st.markdown("""
-| Элемент | Синтаксис |
-|---|---|
-| Раздел (H1) | `# 1 НАЗВАНИЕ РАЗДЕЛА` |
-| Подраздел (H2) | `## 1.1 Название подраздела` |
-| Пункт (H3) | `### 1.1.1 Название пункта` |
-| Рисунок | `[рисунок: имя_файла.png \\| Подпись]` |
-| Таблица | `[таблица]` ... `[/таблица \\| Название]` |
-| Маркированный список | `- Элемент списка` |
-| Нумерованный список | `1) Первый пункт` |
-| Разрыв страницы | `---` |
+elements = []
+images = {}
+parsed_ok = False
 
-**Столбцы таблицы** разделяются символом `|`.
-        """)
+if mode == "Текст с разметкой":
+    # Режим работы с текстом
+    col_input, col_preview = st.columns([3, 2], gap="large")
+    
+    with col_input:
+        st.subheader("📝 Входной текст")
+    
+        with st.expander("📖 Синтаксис разметки", expanded=False):
+            st.markdown("""
+    | Элемент | Синтаксис |
+    |---|---|
+    | Раздел (H1) | `# 1 НАЗВАНИЕ РАЗДЕЛА` |
+    | Подраздел (H2) | `## 1.1 Название подраздела` |
+    | Пункт (H3) | `### 1.1.1 Название пункта` |
+    | Рисунок | `[рисунок: имя_файла.png \\| Подпись]` |
+    | Таблица | `[таблица]` ... `[/таблица \\| Название]` |
+    | Маркированный список | `- Элемент списка` |
+    | Нумерованный список | `1) Первый пункт` |
+    | Разрыв страницы | `---` |
+    
+    **Столбцы таблицы** разделяются символом `|`.
+            """)
+    
+        text_input = st.text_area(
+            "Введите или вставьте текст НИР:",
+            key="text_input",
+            value=EXAMPLE_TEXT,
+            height=500,
+            placeholder="# 1 НАЗВАНИЕ РАЗДЕЛА\n\nТекст абзаца...",
+            label_visibility="collapsed"
+        )
+    
+        # Загрузка изображений
+        st.subheader("🖼️ Изображения")
+        uploaded_images = st.file_uploader(
+            "Загрузите рисунки (PNG, JPG, JPEG)",
+            key="uploaded_images",
+            type=["png", "jpg", "jpeg"],
+            accept_multiple_files=True
+        )
+    
+    # ─────────────────────────────────────────────
+    #  ПРЕВЬЮ СТРУКТУРЫ
+    # ─────────────────────────────────────────────
+    with col_preview:
+        st.subheader("👁️ Структура документа")
+    
+        parser = GostTextParser()
+    
+        if text_input.strip():
+            elements = parser.parse(text_input)
+            elements = parser.auto_number(elements)
+            parsed_ok = True
+            
+            # Сбор изображений
+            if uploaded_images:
+                for f in uploaded_images:
+                    images[f.name] = f.read()
+    
+            # Отображение структуры
+            from parser import Heading, Paragraph, FigureRef, TableElement, ListItem, FormulaElement
+    
+            preview_html = []
+            for el in elements:
+                if isinstance(el, Heading):
+                    num = f"{el.number} " if el.number else ""
+                    lvl = f"preview-h{el.level}"
+                    icon = {"1": "📌", "2": "📎", "3": "▸"}.get(str(el.level), "")
+                    preview_html.append(
+                        f'<div class="preview-item {lvl}">{icon} {num}{el.text}</div>'
+                    )
+                elif isinstance(el, FigureRef):
+                    n = getattr(el, "_number", "?")
+                    preview_html.append(
+                        f'<div class="preview-item preview-fig">🖼️ Рисунок {n} — {el.caption or el.path}</div>'
+                    )
+                elif isinstance(el, TableElement):
+                    n = getattr(el, "_number", "?")
+                    preview_html.append(
+                        f'<div class="preview-item preview-tbl">📊 Таблица {n} — {el.caption}</div>'
+                    )
+                elif isinstance(el, Paragraph):
+                    snippet = el.text[:60] + ("…" if len(el.text) > 60 else "")
+                    preview_html.append(
+                        f'<div class="preview-item preview-para">📝 {snippet}</div>'
+                    )
+                elif isinstance(el, ListItem):
+                    prefix = "1)" if el.ordered else "–"
+                    preview_html.append(
+                        f'<div class="preview-item preview-para" style="padding-left:20px">'
+                        f'{prefix} {el.text[:50]}…</div>'
+                    )
+    
+            st.markdown("\n".join(preview_html), unsafe_allow_html=True)
+    
+            # ── Чеклист соответствия ГОСТ ──────────
+            st.divider()
+            st.subheader("✅ Чеклист ГОСТ 7.32-2017")
+    
+            from parser import Heading
+            headings_text = [el.text.upper() for el in elements if isinstance(el, Heading) and el.level == 1]
+            fig_count = sum(1 for el in elements if isinstance(el, FigureRef))
+            tbl_count = sum(1 for el in elements if isinstance(el, TableElement))
+    
+            checks = [
+                ("Титульный лист", add_title, True),
+                ("Реферат",   add_abstract or "РЕФЕРАТ" in headings_text, True),
+                ("Содержание", add_toc, True),
+                ("Введение",  any("ВВЕДЕНИЕ" in h for h in headings_text), True),
+                ("Заключение", any("ЗАКЛЮЧЕНИЕ" in h for h in headings_text), False),
+                ("Список источников",
+                 any("СПИСОК" in h for h in headings_text), False),
+                (f"Рисунков: {fig_count}", fig_count > 0, False),
+                (f"Таблиц: {tbl_count}", tbl_count > 0, False),
+            ]
+    
+            for name, ok, required in checks:
+                if ok:
+                    st.markdown(f'<span class="check-ok">✔</span> {name}', unsafe_allow_html=True)
+                elif required:
+                    st.markdown(f'<span class="check-err">✘</span> {name} <i>(обязательный элемент)</i>', unsafe_allow_html=True)
+                else:
+                    st.markdown(f'<span class="check-warn">⚠</span> {name} <i>(рекомендуется)</i>', unsafe_allow_html=True)
+    
+        else:
+            st.info("Введите текст слева для отображения структуры.")
 
-    text_input = st.text_area(
-        "Введите или вставьте текст НИР:",
-        key="text_input",
-        value=EXAMPLE_TEXT,
-        height=500,
-        placeholder="# 1 НАЗВАНИЕ РАЗДЕЛА\n\nТекст абзаца...",
-        label_visibility="collapsed"
+else:
+    # Режим загрузки DOCX
+    st.subheader("📄 Загрузка неформатированного Word-документа")
+    
+    uploaded_docx = st.file_uploader(
+        "Выберите DOCX файл с текстом отчёта:",
+        type=["docx"],
+        key="uploaded_docx",
+        help="Из документа будут автоматически извлечены текст, таблицы и изображения."
     )
-
-    # Загрузка изображений
-    st.subheader("🖼️ Изображения")
-    uploaded_images = st.file_uploader(
-        "Загрузите рисунки (PNG, JPG, JPEG)",
-        key="uploaded_images",
-        type=["png", "jpg", "jpeg"],
-        accept_multiple_files=True
-    )
-
-# ─────────────────────────────────────────────
-#  ПРЕВЬЮ СТРУКТУРЫ
-# ─────────────────────────────────────────────
-with col_preview:
-    st.subheader("👁️ Структура документа")
-
-    parser = GostTextParser()
-
-    if text_input.strip():
-        elements = parser.parse(text_input)
-        elements = parser.auto_number(elements)
-
-        # Отображение структуры
-        from parser import Heading, Paragraph, FigureRef, TableElement, ListItem, FormulaElement
-
-        preview_html = []
-        for el in elements:
-            if isinstance(el, Heading):
-                num = f"{el.number} " if el.number else ""
-                lvl = f"preview-h{el.level}"
-                icon = {"1": "📌", "2": "📎", "3": "▸"}.get(str(el.level), "")
-                preview_html.append(
-                    f'<div class="preview-item {lvl}">{icon} {num}{el.text}</div>'
-                )
-            elif isinstance(el, FigureRef):
-                n = getattr(el, "_number", "?")
-                preview_html.append(
-                    f'<div class="preview-item preview-fig">🖼️ Рисунок {n} — {el.caption or el.path}</div>'
-                )
-            elif isinstance(el, TableElement):
-                n = getattr(el, "_number", "?")
-                preview_html.append(
-                    f'<div class="preview-item preview-tbl">📊 Таблица {n} — {el.caption}</div>'
-                )
-            elif isinstance(el, Paragraph):
-                snippet = el.text[:60] + ("…" if len(el.text) > 60 else "")
-                preview_html.append(
-                    f'<div class="preview-item preview-para">📝 {snippet}</div>'
-                )
-            elif isinstance(el, ListItem):
-                prefix = "1)" if el.ordered else "–"
-                preview_html.append(
-                    f'<div class="preview-item preview-para" style="padding-left:20px">'
-                    f'{prefix} {el.text[:50]}…</div>'
-                )
-
-        st.markdown("\n".join(preview_html), unsafe_allow_html=True)
-
-        # ── Чеклист соответствия ГОСТ ──────────
-        st.divider()
-        st.subheader("✅ Чеклист ГОСТ 7.32-2017")
-
-        from parser import Heading
-        headings_text = [el.text.upper() for el in elements if isinstance(el, Heading) and el.level == 1]
-        fig_count = sum(1 for el in elements if isinstance(el, FigureRef))
-        tbl_count = sum(1 for el in elements if isinstance(el, TableElement))
-
-        checks = [
-            ("Титульный лист", add_title, True),
-            ("Реферат",   add_abstract or "РЕФЕРАТ" in headings_text, True),
-            ("Содержание", add_toc, True),
-            ("Введение",  any("ВВЕДЕНИЕ" in h for h in headings_text), True),
-            ("Заключение", any("ЗАКЛЮЧЕНИЕ" in h for h in headings_text), False),
-            ("Список источников",
-             any("СПИСОК" in h for h in headings_text), False),
-            (f"Рисунков: {fig_count}", fig_count > 0, False),
-            (f"Таблиц: {tbl_count}", tbl_count > 0, False),
-        ]
-
-        for name, ok, required in checks:
-            if ok:
-                st.markdown(f'<span class="check-ok">✔</span> {name}', unsafe_allow_html=True)
-            elif required:
-                st.markdown(f'<span class="check-err">✘</span> {name} <i>(обязательный элемент)</i>', unsafe_allow_html=True)
-            else:
-                st.markdown(f'<span class="check-warn">⚠</span> {name} <i>(рекомендуется)</i>', unsafe_allow_html=True)
-
+    
+    if uploaded_docx is not None:
+        with st.spinner("Обработка документа..."):
+            try:
+                docx_bytes = uploaded_docx.read()
+                parser = GostDocxParser()
+                elements, images = parser.parse(docx_bytes)
+                elements = parser.auto_number(elements)
+                parsed_ok = True
+                
+                st.success(f"✅ Документ обработан! Найдено элементов: {len(elements)}")
+                
+                # Показываем структуру
+                from docx_parser import Heading, Paragraph, FigureRef, TableElement, ListItem
+                
+                st.subheader("👁️ Распознанная структура:")
+                
+                preview_html = []
+                for el in elements[:50]:  # Показываем первые 50 элементов
+                    if isinstance(el, Heading):
+                        num = f"{el.number} " if el.number else ""
+                        lvl = f"preview-h{el.level}"
+                        icon = {"1": "📌", "2": "📎", "3": "▸"}.get(str(el.level), "")
+                        preview_html.append(
+                            f'<div class="preview-item {lvl}">{icon} {num}{el.text}</div>'
+                        )
+                    elif isinstance(el, FigureRef):
+                        n = getattr(el, "_number", "?")
+                        preview_html.append(
+                            f'<div class="preview-item preview-fig">🖼️ Рисунок {n} — {el.caption}</div>'
+                        )
+                    elif isinstance(el, TableElement):
+                        n = getattr(el, "_number", "?")
+                        preview_html.append(
+                            f'<div class="preview-item preview-tbl">📊 Таблица {n} — {el.caption}</div>'
+                        )
+                    elif isinstance(el, Paragraph):
+                        snippet = el.text[:60] + ("…" if len(el.text) > 60 else "")
+                        preview_html.append(
+                            f'<div class="preview-item preview-para">📝 {snippet}</div>'
+                        )
+                    elif isinstance(el, ListItem):
+                        prefix = "1)" if el.ordered else "–"
+                        preview_html.append(
+                            f'<div class="preview-item preview-para" style="padding-left:20px">'
+                            f'{prefix} {el.text[:50]}…</div>'
+                        )
+                
+                st.markdown("\n".join(preview_html), unsafe_allow_html=True)
+                
+                if len(elements) > 50:
+                    st.info(f"... и ещё {len(elements) - 50} элементов")
+                
+                # Статистика
+                st.divider()
+                col_s1, col_s2, col_s3, col_s4 = st.columns(4)
+                h1_count = sum(1 for el in elements if isinstance(el, Heading) and el.level == 1)
+                h2_count = sum(1 for el in elements if isinstance(el, Heading) and el.level == 2)
+                fig_count = sum(1 for el in elements if isinstance(el, FigureRef))
+                tbl_count = sum(1 for el in elements if isinstance(el, TableElement))
+                
+                col_s1.metric("Разделов", h1_count)
+                col_s2.metric("Подразделов", h2_count)
+                col_s3.metric("Рисунков", fig_count)
+                col_s4.metric("Таблиц", tbl_count)
+                
+            except Exception as e:
+                st.error(f"❌ Ошибка обработки файла: {str(e)}")
+                parsed_ok = False
     else:
-        st.info("Введите текст слева для отображения структуры.")
+        st.info("👆 Загрузите DOCX файл для начала работы")
+        
+        with st.expander("ℹ️ Как это работает"):
+            st.markdown("""
+            **Что делает система:**
+            
+            1. **Извлекает текст** из всех параграфов документа
+            2. **Распознаёт заголовки** по стилям Word (Heading 1, 2, 3) или форматированию
+            3. **Находит таблицы** и переносит их в формат ГОСТ
+            4. **Извлекает изображения** из документа
+            5. **Автоматически нумерует** разделы, рисунки и таблицы
+            6. **Генерирует новый DOCX** со всеми требованиями ГОСТ 7.32-2017
+            
+            **Советы для лучшего распознавания:**
+            
+            - Используйте стили заголовков в Word (Heading 1, Heading 2, etc.)
+            - Специальные разделы (ВВЕДЕНИЕ, ЗАКЛЮЧЕНИЕ и т.д.) должны быть написаны ЗАГЛАВНЫМИ буквами
+            - Таблицы должны быть оформлены как таблицы Word (не текстом!)
+            """)
+
+# Сохраняем элементы и images в session state для использования при генерации
+st.session_state['elements'] = elements
+st.session_state['images'] = images
+st.session_state['parsed_ok'] = parsed_ok
 
 # ─────────────────────────────────────────────
 #  СПРАВОЧНИК ГОСТ (раскрываемый)
@@ -320,22 +450,35 @@ with col_btn:
     generate = st.button("🔄 Сформировать DOCX", key="generate", type="primary", use_container_width=True)
 
 if generate:
-    if not text_input.strip():
-        st.error("❌ Введите текст документа!")
-    else:
-        with st.spinner("Формирование документа по ГОСТ 7.32-2017…"):
-
+    # Проверяем режим и получаем данные
+    if mode == "Текст с разметкой":
+        if not text_input.strip():
+            st.error("❌ Введите текст документа!")
+            generate = False
+        else:
             # Парсинг текста
             parser = GostTextParser()
             elements = parser.parse(text_input)
             elements = parser.auto_number(elements)
-
+            
             # Сбор изображений
             images = {}
             if uploaded_images:
                 for f in uploaded_images:
                     images[f.name] = f.read()
-
+    else:
+        # Режим DOCX
+        if not parsed_ok or not elements:
+            st.error("❌ Загрузите DOCX файл для обработки!")
+            generate = False
+        else:
+            # Элементы и изображения уже загружены из session state
+            elements = st.session_state.get('elements', [])
+            images = st.session_state.get('images', {})
+    
+    if generate:
+        with st.spinner("Формирование документа по ГОСТ 7.32-2017…"):
+            
             # Метаданные
             authors = []
             for line in authors_raw.strip().splitlines():
