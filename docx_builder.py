@@ -21,10 +21,11 @@ from gost_styles import (
     PAGE, BODY, HEADING1, HEADING2, HEADING3,
     FIGURE_CAPTION, TABLE_CAPTION, TABLE_CELL, FOOTER, LIST_ITEM
 )
-from parser import (
+from elements import (
     Heading, Paragraph, FigureRef, TableElement,
-    ListItem, PageBreak, SpecialSection, FormulaElement
+    ListItem, PageBreak, FormulaElement,
 )
+from bibliography import Reference
 
 
 class GostDocxBuilder:
@@ -446,6 +447,38 @@ class GostDocxBuilder:
         self.doc.add_page_break()
 
     # ──────────────────────────────────────────
+    #  СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ
+    # ──────────────────────────────────────────
+    def add_bibliography(self, references: List[Reference]):
+        """Добавляет раздел «СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ».
+        References подаются в порядке первого упоминания (нумерация — позиция
+        в списке)."""
+        doc = self.doc
+        if not references:
+            return
+
+        # Заголовок раздела (без сквозной нумерации — спецраздел)
+        p = doc.add_paragraph(style="Heading 1")
+        p.paragraph_format.page_break_before = True
+        p.paragraph_format.first_line_indent = Cm(0)
+        self._add_line_spacing(p)
+        run = p.add_run("СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ")
+        self._set_run_font(run, 14, bold=True)
+
+        # Записи списка — нумерованный список с висячим отступом
+        for idx, ref in enumerate(references, start=1):
+            item = doc.add_paragraph()
+            fmt = item.paragraph_format
+            fmt.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+            fmt.left_indent = Cm(1.0)
+            fmt.first_line_indent = Cm(-1.0)  # «висячий» отступ для номера
+            fmt.space_before = Pt(0)
+            fmt.space_after = Pt(0)
+            fmt.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
+            r = item.add_run(f"{idx}. {ref.text}")
+            self._set_run_font(r, 14)
+
+    # ──────────────────────────────────────────
     #  ФИНАЛИЗАЦИЯ
     # ──────────────────────────────────────────
     def finalize(self):
@@ -454,8 +487,13 @@ class GostDocxBuilder:
             self._add_footer(section)
             section.different_first_page_header_footer = True  # первая стр. без номера
 
-    def build(self, elements: List, images: Dict[str, bytes]) -> bytes:
-        """Сборка всего документа, возвращает bytes."""
+    def build(self, elements: List, images: Dict[str, bytes],
+              references: Optional[List[Reference]] = None) -> bytes:
+        """Сборка всего документа, возвращает bytes.
+
+        Если задан references — после основного содержания добавляется раздел
+        «СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ» с записями в указанном порядке.
+        """
         list_counter = 0
         prev_was_list = False
 
@@ -496,6 +534,11 @@ class GostDocxBuilder:
                 list_counter = 0
                 prev_was_list = False
                 self.add_page_break()
+
+        # Список источников добавляется ПЕРЕД финализацией,
+        # чтобы footer/нумерация страниц охватили и его.
+        if references:
+            self.add_bibliography(references)
 
         self.finalize()
 

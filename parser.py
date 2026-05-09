@@ -5,57 +5,33 @@
 
 import re
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List
 
+from elements import (
+    Heading, Paragraph, FigureRef, TableElement,
+    ListItem, PageBreak, FormulaElement, DocElement,
+    auto_number as _auto_number,
+)
 
-# ─────────────────────────────────────────────
-#  Типы элементов
-# ─────────────────────────────────────────────
-@dataclass
-class Heading:
-    level: int          # 1, 2, 3
-    text: str
-    number: str = ""    # "1", "1.1", "1.1.1"
-
-@dataclass
-class Paragraph:
-    text: str
-
-@dataclass
-class FigureRef:
-    path: str           # имя файла или placeholder
-    caption: str
-
-@dataclass
-class TableElement:
-    rows: List[List[str]]
-    caption: str
-    has_header: bool = True
-
-@dataclass
-class ListItem:
-    text: str
-    ordered: bool = False
-    number: int = 1
-
-@dataclass
-class PageBreak:
-    pass
 
 @dataclass
 class SpecialSection:
-    """Реферат, Содержание, Введение и т.д."""
+    """Реферат, Содержание, Введение и т.д. (зарезервировано для будущего)."""
     title: str
     paragraphs: List[str] = field(default_factory=list)
 
-@dataclass
-class FormulaElement:
-    text: str
-    number: str = ""
+
+# Если заголовок начинается с явной нумерации ("1 НАЗВАНИЕ", "1.2.3 Foo"),
+# отделяем номер от текста — иначе auto_number добавит дублирующий префикс.
+_RE_LEADING_NUMBER = re.compile(r'^(\d+(?:\.\d+)*)[.)\s]+(.+)$')
 
 
-DocElement = (Heading | Paragraph | FigureRef | TableElement |
-              ListItem | PageBreak | SpecialSection | FormulaElement)
+def _split_leading_number(text: str) -> tuple[str, str]:
+    """Возвращает (номер, текст). Если номера нет — ('', text)."""
+    m = _RE_LEADING_NUMBER.match(text.strip())
+    if m:
+        return m.group(1), m.group(2).strip()
+    return "", text.strip()
 
 
 # ─────────────────────────────────────────────
@@ -177,26 +153,24 @@ class GostTextParser:
             # --- Заголовок H1 ---
             m = self.RE_H1.match(line)
             if m:
-                title = m.group(1).strip()
-                upper = title.upper()
-                if upper in self.SPECIAL or any(upper.startswith(s) for s in self.SPECIAL):
-                    elements.append(Heading(level=1, text=title))
-                else:
-                    elements.append(Heading(level=1, text=title))
+                num, txt = _split_leading_number(m.group(1))
+                elements.append(Heading(level=1, text=txt, number=num))
                 i += 1
                 continue
 
             # --- Заголовок H2 ---
             m = self.RE_H2.match(line)
             if m:
-                elements.append(Heading(level=2, text=m.group(1).strip()))
+                num, txt = _split_leading_number(m.group(1))
+                elements.append(Heading(level=2, text=txt, number=num))
                 i += 1
                 continue
 
             # --- Заголовок H3 ---
             m = self.RE_H3.match(line)
             if m:
-                elements.append(Heading(level=3, text=m.group(1).strip()))
+                num, txt = _split_leading_number(m.group(1))
+                elements.append(Heading(level=3, text=txt, number=num))
                 i += 1
                 continue
 
@@ -242,47 +216,5 @@ class GostTextParser:
 
 
     def auto_number(self, elements: List) -> List:
-        """Автоматически нумерует заголовки, рисунки, таблицы."""
-        h1_count = 0
-        h2_count = 0
-        h3_count = 0
-        fig_count = 0
-        tbl_count = 0
-
-        SPECIAL_UPPER = {
-            "РЕФЕРАТ", "СОДЕРЖАНИЕ", "ОПРЕДЕЛЕНИЯ",
-            "ОБОЗНАЧЕНИЯ И СОКРАЩЕНИЯ", "ВВЕДЕНИЕ",
-            "ЗАКЛЮЧЕНИЕ", "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ",
-        }
-
-        for el in elements:
-            if isinstance(el, Heading):
-                text_upper = el.text.upper().strip()
-                is_special = text_upper in SPECIAL_UPPER or any(
-                    text_upper.startswith(s) for s in SPECIAL_UPPER
-                )
-                if el.level == 1:
-                    if not is_special:
-                        h1_count += 1
-                        h2_count = 0
-                        h3_count = 0
-                        el.number = str(h1_count)
-                    else:
-                        el.number = ""
-                elif el.level == 2:
-                    h2_count += 1
-                    h3_count = 0
-                    el.number = f"{h1_count}.{h2_count}"
-                elif el.level == 3:
-                    h3_count += 1
-                    el.number = f"{h1_count}.{h2_count}.{h3_count}"
-
-            elif isinstance(el, FigureRef):
-                fig_count += 1
-                el._number = fig_count
-
-            elif isinstance(el, TableElement):
-                tbl_count += 1
-                el._number = tbl_count
-
-        return elements
+        """Сквозная нумерация (делегируется в elements.auto_number)."""
+        return _auto_number(elements)

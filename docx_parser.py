@@ -6,56 +6,17 @@
 
 import re
 import io
-from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Tuple
 from docx import Document
 from docx.oxml.ns import qn
 from docx.table import Table
 from docx.text.paragraph import Paragraph as DocxParagraph
 
-
-# ─────────────────────────────────────────────
-#  Типы элементов
-# ─────────────────────────────────────────────
-@dataclass
-class Heading:
-    level: int          # 1, 2, 3
-    text: str
-    number: str = ""    # "1", "1.1", "1.1.1"
-
-@dataclass
-class Paragraph:
-    text: str
-
-@dataclass
-class FigureRef:
-    path: str           # имя файла или placeholder
-    caption: str
-    image_data: bytes = None  # данные изображения
-
-@dataclass
-class TableElement:
-    rows: List[List[str]]
-    caption: str
-    has_header: bool = True
-
-@dataclass
-class ListItem:
-    text: str
-    ordered: bool = False
-    number: int = 1
-
-@dataclass
-class PageBreak:
-    pass
-
-@dataclass
-class FormulaElement:
-    text: str
-    number: str = ""
-
-
-DocElement = Heading | Paragraph | FigureRef | TableElement | ListItem | PageBreak | FormulaElement
+from elements import (
+    Heading, Paragraph, FigureRef, TableElement,
+    ListItem, PageBreak, FormulaElement, DocElement,
+    auto_number as _auto_number,
+)
 
 
 # ─────────────────────────────────────────────
@@ -298,46 +259,5 @@ class GostDocxParser:
         return self.elements, self.images
 
     def auto_number(self, elements: List) -> List:
-        """Автоматически нумерует заголовки, рисунки, таблицы."""
-        h1_count = 0
-        h2_count = 0
-        h3_count = 0
-        fig_count = 0
-        tbl_count = 0
-
-        for el in elements:
-            if isinstance(el, Heading):
-                text_upper = el.text.upper().strip()
-                is_special = text_upper in self.SPECIAL_SECTIONS or any(
-                    text_upper.startswith(s) for s in self.SPECIAL_SECTIONS
-                )
-                
-                if el.level == 1:
-                    if not is_special:
-                        h1_count += 1
-                        h2_count = 0
-                        h3_count = 0
-                        # Сохраняем существующий номер или присваиваем новый
-                        if not el.number:
-                            el.number = str(h1_count)
-                    else:
-                        el.number = ""
-                elif el.level == 2:
-                    h2_count += 1
-                    h3_count = 0
-                    if not el.number:
-                        el.number = f"{h1_count}.{h2_count}"
-                elif el.level == 3:
-                    h3_count += 1
-                    if not el.number:
-                        el.number = f"{h1_count}.{h2_count}.{h3_count}"
-
-            elif isinstance(el, FigureRef):
-                fig_count += 1
-                el._number = fig_count
-
-            elif isinstance(el, TableElement):
-                tbl_count += 1
-                el._number = tbl_count
-
-        return elements
+        """Сквозная нумерация (делегируется в elements.auto_number)."""
+        return _auto_number(elements)
